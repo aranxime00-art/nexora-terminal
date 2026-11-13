@@ -1,0 +1,20 @@
+﻿project:
+  name: "NEXORA"
+  version: "0.1.0"
+  environment: "development"
+
+trading:
+  mode: "paper" # OBLIGATORIO: Solo paper trading
+  initial_capital_usd: 10000.0
+  base_currency: "USD"
+
+universe:
+  us_equity: ["SPY", "QQQ", "IWM", "DIA"]
+  intl_equity: ["EFA", "EEM"]
+  bonds: ["IEF", "TLT", "SHY"]
+  alternatives: ["GLD", "VNQ"]
+  sectors: ["XLK", "XLF", "XLE", "XLV", "XLI"]
+
+system:
+  log_level: "INFO"
+  timezone: "America/New_York"

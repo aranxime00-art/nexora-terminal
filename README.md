@@ -1,0 +1,20 @@
+﻿# NEXORA - Quantitative Intelligence & Investment System
+
+Sistema inteligente de inversión algorítmica, análisis cuantitativo y gestión adaptativa de portafolios.
+
+**Estado Actual:** Fase 1 - Preparación del entorno.
+
+## Requisitos
+- Python 3.12
+- Git
+- Windows 11 / Linux
+
+## Instalación Rápida
+1. Clonar el repositorio.
+2. Crear entorno virtual: `py -3.12 -m venv .venv`
+3. Activar: `.\.venv\Scripts\Activate.ps1` (Windows) o `source .venv/bin/activate` (Linux)
+4. Instalar dependencias: `pip install -e .[dev]`
+5. Ejecutar pruebas: `pytest`
+
+## Aviso Importante
+NEXORA opera **exclusivamente en modo Paper Trading** (capital virtual). No conecta con brokers reales ni ejecuta órdenes con dinero real.
