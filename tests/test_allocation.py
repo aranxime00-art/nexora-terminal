@@ -1,7 +1,9 @@
-﻿import pytest
+﻿import numpy as np
 import pandas as pd
-import numpy as np
-from nexora.allocation import optimize_portfolio, OptimizationMethod
+import pytest
+
+from nexora.allocation import OptimizationMethod, optimize_portfolio
+
 
 @pytest.fixture
 def mock_returns():
