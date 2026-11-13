@@ -12,6 +12,9 @@ authors = [{ name = "NEXORA Team" }]
 dependencies = [
     "pyyaml>=6.0.1",
     "pydantic>=2.6.0",
+    "yfinance>=0.2.37",
+    "pandas>=2.2.0",
+    "sqlalchemy>=2.0.0",
 ]
 
 [project.optional-dependencies]

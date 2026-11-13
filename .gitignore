@@ -30,3 +30,7 @@ reports/*
 Thumbs.db
 .vscode/
 .idea/
+
+data/*.db
+
+src/*.egg-info/
