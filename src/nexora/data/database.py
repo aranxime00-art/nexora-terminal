@@ -1,8 +1,20 @@
-﻿from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint, DateTime
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.engine import Engine
+﻿from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    create_engine,
+)
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import DeclarativeBase
+
 
 class Base(DeclarativeBase):
     pass
@@ -35,7 +47,7 @@ class Account(Base):
     id = Column(Integer, primary_key=True)
     cash = Column(Float, nullable=False, default=10000.0)
     initial_capital = Column(Float, nullable=False, default=10000.0)
-    last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    last_updated = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 class Position(Base):
     __tablename__ = "positions"
@@ -53,7 +65,7 @@ class TradeOrder(Base):
     price = Column(Float, nullable=False)
     commission = Column(Float, nullable=False, default=0.0)
     slippage = Column(Float, nullable=False, default=0.0)
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime, default=lambda: datetime.now(UTC))
 
 def get_engine(db_path: str = "data/nexora.db") -> Engine:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
