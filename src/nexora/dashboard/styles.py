@@ -1,5 +1,6 @@
 ﻿import streamlit as st
 
+
 def apply_custom_css() -> None:
     """Aplica el diseño oscuro institucional de NEXORA."""
     st.markdown("""

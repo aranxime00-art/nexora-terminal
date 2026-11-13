@@ -1,7 +1,8 @@
-﻿import streamlit as st
+﻿import numpy as np
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
+import streamlit as st
+
 from nexora.dashboard.styles import apply_custom_css
 
 st.set_page_config(page_title="NEXORA", page_icon="📈", layout="wide")
@@ -11,7 +12,7 @@ with st.sidebar:
     st.title("NEXORA")
     st.markdown("*QUANTITATIVE INTELLIGENCE*")
     st.divider()
-    
+
     opcion = st.radio(
         "Navegación",
         ["Inicio", "Mercado", "Ranking NEXORA", "Portafolio", "Centro de Inteligencia"]
@@ -22,27 +23,27 @@ with st.sidebar:
 
 if opcion == "Inicio":
     st.title("Panel de Control")
-    
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Patrimonio Total", "$10,450.20", "+4.5%")
     col2.metric("Efectivo", "$2,000.00", "-")
     col3.metric("Drawdown Actual", "-1.2%", "Max: -5.4%")
     col4.metric("Régimen", "Expansión", "SPY > SMA200")
-    
+
     st.divider()
-    
+
     st.subheader("Evolución del Patrimonio")
     fechas = pd.date_range(start="2024-01-01", periods=100, freq="B")
-    
+
     # Generar una curva de equity más realista (Random Walk con sesgo positivo)
     np.random.seed(42)
     retornos = np.random.normal(0.001, 0.01, 100)
     equity = 10000 * np.exp(np.cumsum(retornos))
-    
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=fechas, y=equity, 
-        mode='lines', 
+        x=fechas, y=equity,
+        mode='lines',
         line=dict(color='#168BCE', width=2),
         fill='tozeroy',
         fillcolor='rgba(22, 139, 206, 0.1)'
@@ -61,7 +62,7 @@ if opcion == "Inicio":
 elif opcion == "Ranking NEXORA":
     st.title("Ranking Cuantitativo")
     st.markdown("Clasificación de activos según el *Composite Score*.")
-    
+
     data = {
         "Activo": ["SPY", "QQQ", "GLD", "TLT", "VNQ"],
         "Score": [88.5, 76.2, 65.0, 45.3, 32.1],
