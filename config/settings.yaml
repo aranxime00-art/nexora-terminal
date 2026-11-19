@@ -1,19 +1,18 @@
 ﻿project:
   name: "NEXORA"
-  version: "0.1.0"
-  environment: "development"
+  version: "1.0.0"
+  environment: "simulation_live"
 
 trading:
-  mode: "paper" # OBLIGATORIO: Solo paper trading
-  initial_capital_usd: 10000.0
+  mode: "paper_simulation"
+  initial_capital_usd: 1000.0  # 👈 AQUÍ PONES EL DINERO VIRTUAL QUE QUIERAS
   base_currency: "USD"
 
 universe:
-  us_equity: ["SPY", "QQQ", "IWM", "DIA"]
-  intl_equity: ["EFA", "EEM"]
-  bonds: ["IEF", "TLT", "SHY"]
-  alternatives: ["GLD", "VNQ"]
-  sectors: ["XLK", "XLF", "XLE", "XLV", "XLI"]
+  # Puedes usar criptos (MEXC) o ETFs (Yahoo Finance)
+  # Ejemplo Cripto: ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+  # Ejemplo ETFs: ["SPY", "QQQ", "GLD"]
+  us_equity: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"]
 
 system:
   log_level: "INFO"

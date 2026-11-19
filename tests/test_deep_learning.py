@@ -1,7 +1,9 @@
-﻿import pytest
+﻿import numpy as np
 import pandas as pd
-import numpy as np
+import pytest
+
 from nexora.deep_learning import train_lstm_model
+
 
 @pytest.fixture
 def mock_returns():
@@ -10,7 +12,7 @@ def mock_returns():
 
 def test_lstm_training(mock_returns):
     results = train_lstm_model(mock_returns, seq_length=5, epochs=2)
-    
+
     assert "error" not in results
     assert results["model"] == "LSTM"
     assert results["final_loss"] >= 0.0

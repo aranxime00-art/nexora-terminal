@@ -1,20 +1,8 @@
-﻿from datetime import UTC, datetime
-from pathlib import Path
-
-from sqlalchemy import (
-    Column,
-    Date,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    UniqueConstraint,
-    create_engine,
-)
-from sqlalchemy.engine import Engine
+﻿from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint, DateTime
 from sqlalchemy.orm import DeclarativeBase
-
+from sqlalchemy.engine import Engine
+from pathlib import Path
+from datetime import datetime, timezone
 
 class Base(DeclarativeBase):
     pass
@@ -37,17 +25,14 @@ class PriceHistory(Base):
     close = Column(Float, nullable=False)
     adj_close = Column(Float, nullable=False)
     volume = Column(Integer, nullable=True)
-
-    __table_args__ = (
-        UniqueConstraint('asset_id', 'date', name='uix_asset_date'),
-    )
+    __table_args__ = (UniqueConstraint('asset_id', 'date', name='uix_asset_date'),)
 
 class Account(Base):
     __tablename__ = "account"
     id = Column(Integer, primary_key=True)
     cash = Column(Float, nullable=False, default=10000.0)
     initial_capital = Column(Float, nullable=False, default=10000.0)
-    last_updated = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class Position(Base):
     __tablename__ = "positions"
@@ -60,12 +45,19 @@ class TradeOrder(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, autoincrement=True)
     ticker = Column(String, nullable=False, index=True)
-    side = Column(String, nullable=False) # "BUY" or "SELL"
+    side = Column(String, nullable=False)
     quantity = Column(Float, nullable=False)
     price = Column(Float, nullable=False)
     commission = Column(Float, nullable=False, default=0.0)
     slippage = Column(Float, nullable=False, default=0.0)
-    timestamp = Column(DateTime, default=lambda: datetime.now(UTC))
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+# NUEVA TABLA PARA PRECIOS EN VIVO
+class MarketPrice(Base):
+    __tablename__ = "market_prices"
+    ticker = Column(String, primary_key=True)
+    price = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 def get_engine(db_path: str = "data/nexora.db") -> Engine:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
