@@ -23,14 +23,30 @@ def apply_custom_css() -> None:
             border-right: 1px solid #36C9D5;
         }
         
+        /* ARREGLO DE COLORES DEL SIDEBAR */
+        [data-testid="stSidebar"] label, 
+        [data-testid="stSidebar"] p, 
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] div {
+            color: #E2E8F0 !important; /* Texto claro */
+        }
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+            color: #36C9D5 !important; /* Títulos en Cian */
+        }
+        
+        /* Resaltar opción seleccionada */
+        [data-testid="stSidebar"] [data-testid="stRadio"] [aria-checked="true"] ~ div p {
+            color: #36C9D5 !important;
+            font-weight: bold;
+            text-shadow: 0 0 8px rgba(54, 201, 213, 0.8);
+        }
+
         .stButton>button {
             background-color: #1E293B;
             color: #FFFFFF;
             border: 1px solid #36C9D5;
         }
         .stButton>button:hover { background-color: #36C9D5; color: #000000; }
-
-        .stSelectbox label, .stNumberInput label { color: #FFFFFF !important; font-weight: bold; }
 
         [data-testid="stMetric"] {
             background: rgba(30, 41, 59, 0.8) !important;
@@ -56,7 +72,6 @@ def apply_custom_css() -> None:
         .nexora-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #FFFFFF; }
         .nexora-table tr:hover { background: rgba(54, 201, 213, 0.2); }
         
-        /* NO ocultamos el header para que puedas abrir/cerrar el menú */
-        footer {visibility: hidden;} 
+        #MainMenu {visibility: hidden;} footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
