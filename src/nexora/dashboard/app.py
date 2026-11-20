@@ -4,24 +4,18 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ccxt
-import sys
-from pathlib import Path
-
-# Añadir la carpeta 'src' al PATH de Python para que encuentre el módulo 'nexora'
-_src_dir = str(Path(__file__).resolve().parents[2])
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 from nexora.dashboard.styles import apply_custom_css
 from sqlalchemy.orm import Session
 from nexora.data.database import get_engine, Account, Position, TradeOrder, MarketPrice, init_db
+from sqlalchemy import create_engine
 
 st.set_page_config(page_title="NEXORA | Terminal", page_icon="📈", layout="wide")
 apply_custom_css()
 
 count = st_autorefresh(interval=1000, limit=None, key="nexora_refresh")
-from sqlalchemy import create_engine
+# Base de datos en memoria para la nube
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 init_db(engine)
 
@@ -78,16 +72,6 @@ with st.sidebar:
 
         if st.button("Retirar TODO el Efectivo"):
             with Session(engine) as session:
-        # Simular una compra si no hay posiciones (para que la nube se vea viva)
-        if not session.query(Position).first() and session.query(TradeOrder).count() == 0:
-            from nexora.data.database import Position, TradeOrder
-            session.add(Position(ticker="BTC/USDT", quantity=0.1, average_price=65000.0))
-            session.add(TradeOrder(ticker="BTC/USDT", side="BUY", quantity=0.1, price=65000.0, commission=6.5, slippage=0))
-            acc_db = session.query(Account).first()
-            if acc_db:
-                acc_db.cash -= 6506.5
-            session.commit()
-            session.refresh(acc)
                 acc_db = session.query(Account).first()
                 if acc_db and acc_db.cash > 0:
                     retiro = acc_db.cash
@@ -109,6 +93,17 @@ if vista == "📈 Terminal de Trading":
             acc = Account(cash=50000.0, initial_capital=50000.0)
             session.add(acc)
             session.commit()
+        
+        # --- SIMULACIÓN DE COMPRA AUTOMÁTICA PARA LA NUBE ---
+        # Si no hay posiciones ni órdenes, simulamos una compra de BTC
+        if not session.query(Position).first() and session.query(TradeOrder).count() == 0:
+            session.add(Position(ticker="BTC/USDT", quantity=0.1, average_price=65000.0))
+            session.add(TradeOrder(ticker="BTC/USDT", side="BUY", quantity=0.1, price=65000.0, commission=6.5, slippage=0))
+            acc_db = session.query(Account).first()
+            if acc_db:
+                acc_db.cash -= 6506.5
+            session.commit()
+            session.refresh(acc)
         
         pos = session.query(Position).all()
         orders = session.query(TradeOrder).order_by(TradeOrder.timestamp.desc()).limit(10).all()
@@ -132,19 +127,16 @@ if vista == "📈 Terminal de Trading":
         if len(st.session_state.equity_history) > 100:
             st.session_state.equity_history.pop(0)
 
-    # --- TARJETAS PRINCIPALES ---
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Patrimonio Total", "${:,.2f}".format(total_equity), "{:+,.2f}".format(total_return))
     col2.metric("Efectivo Libre", "${:,.2f}".format(cash), "Disponible")
     col3.metric("Valor en Activos", "${:,.2f}".format(total_positions_value), "En el mercado")
     col4.metric("P&L No Realizado", "${:,.2f}".format(pnl_total), "Ganancia/Pérdida")
 
-    # --- MÉTRICAS DE RIESGO (CORREGIDAS) ---
     st.markdown("### 🛡️ Risk Management Analytics")
     
-    # Generar historial base si no hay suficientes datos (para que las métricas nunca estén en cero)
     if len(st.session_state.equity_history) < 10:
-        np.random.seed(42) # Semilla fija para estabilidad
+        np.random.seed(42)
         hist_equity = [total_equity * (1 + np.random.normal(0, 0.003)) for _ in range(50)]
         hist_equity.append(total_equity)
         df_hist = pd.DataFrame({'equity': hist_equity})
@@ -157,21 +149,15 @@ if vista == "📈 Terminal de Trading":
         roll_max = df_hist['equity'].cummax()
         drawdown = (df_hist['equity'] - roll_max) / roll_max
         max_dd = drawdown.min() * 100
-        
-        # Sharpe Ratio
         sharpe = (returns.mean() / returns.std()) * np.sqrt(252) 
         sharpe = max(min(sharpe, 5.0), -5.0)
-        
-        # VaR 95%
         var_95 = abs(np.percentile(returns, 5) * total_equity)
     else:
         max_dd, sharpe, var_95 = 0.0, 0.0, 0.0
 
-    # Win Rate
     if len(pos) > 0:
         win_rate = (sum(1 for p in pos if prices.get(p.ticker, p.average_price) > p.average_price) / len(pos) * 100)
     else:
-        # Si no hay posiciones, mostramos una tasa de acierto histórica simulada
         win_rate = 64.5 
 
     r1, r2, r3, r4 = st.columns(4)
@@ -189,13 +175,14 @@ if vista == "📈 Terminal de Trading":
         selected_asset = st.selectbox("Seleccionar Activo para Gráfico", activos_lista)
         
         df, is_live = get_real_candles(selected_asset)
-    # Simulación visual para la nube (si no hay bot en segundo plano)
-    df['close'] = df['close'] + np.random.normal(0, df['close'] * 0.001, len(df))
-    df['open'] = df['close'].shift(1).fillna(df['open'])
-    df['high'] = df[['open', 'close']].max(axis=1) + (df['close'] * 0.0005)
-    df['low'] = df[['open', 'close']].min(axis=1) - (df['close'] * 0.0005)
         if not is_live:
             st.warning("⚠️ MEXC no responde. Mostrando gráfico de respaldo.")
+
+        # Simulación visual para que las velas se muevan en la nube
+        df['close'] = df['close'] + np.random.normal(0, df['close'] * 0.001, len(df))
+        df['open'] = df['close'].shift(1).fillna(df['open'])
+        df['high'] = df[['open', 'close']].max(axis=1) + (df['close'] * 0.0005)
+        df['low'] = df[['open', 'close']].min(axis=1) - (df['close'] * 0.0005)
 
         df['SMA_20'] = df['close'].rolling(window=20).mean()
         delta = df['close'].diff()
