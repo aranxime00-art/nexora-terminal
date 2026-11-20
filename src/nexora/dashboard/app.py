@@ -4,6 +4,13 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ccxt
+import sys
+from pathlib import Path
+
+# Añadir la carpeta 'src' al PATH de Python para que encuentre el módulo 'nexora'
+_src_dir = str(Path(__file__).resolve().parents[2])
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 from nexora.dashboard.styles import apply_custom_css
