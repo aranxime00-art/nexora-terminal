@@ -1,4 +1,3 @@
-$content_app = @'
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -350,7 +349,3 @@ elif vista == "🧠 Red Neuronal LSTM":
             margin=dict(l=0, r=0, t=10, b=0), height=250
         )
         st.plotly_chart(fig_loss, use_container_width=True)
-'@
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText("C:\Dev\nexora\src\nexora\dashboard\app.py", $content_app, $utf8NoBom)
-Write-Host "Archivo actualizado con simulacion interactiva para la nube." -ForegroundColor Green
