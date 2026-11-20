@@ -3,75 +3,156 @@
 def apply_custom_css() -> None:
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap');
+
+        /* Fondo Global (Charcoal Oscuro) */
         .stApp {
-            background-color: #0B1120;
-            background-image: radial-gradient(circle at 50% 0%, rgba(22, 139, 206, 0.15) 0%, transparent 50%);
-            color: #FFFFFF;
-            font-family: 'Rajdhani', sans-serif;
-        }
-        
-        h1, h2, h3, h4, h5, h6 {
-            color: #FFFFFF !important;
-            text-shadow: 0 0 12px rgba(54, 201, 213, 0.6) !important;
-            font-family: 'Rajdhani', sans-serif;
+            background-color: #0F1115;
+            color: #E2E8F0;
+            font-family: 'Inter', sans-serif;
         }
 
+        /* Ocultar elementos básicos de Streamlit */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+
+        /* Sidebar (Graphite) */
         [data-testid="stSidebar"] {
-            background: rgba(15, 23, 42, 0.95) !important;
-            border-right: 1px solid #36C9D5;
-        }
-        
-        /* ARREGLO DE COLORES DEL SIDEBAR */
-        [data-testid="stSidebar"] label, 
-        [data-testid="stSidebar"] p, 
-        [data-testid="stSidebar"] span,
-        [data-testid="stSidebar"] div {
-            color: #E2E8F0 !important; /* Texto claro */
-        }
-        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-            color: #36C9D5 !important; /* Títulos en Cian */
-        }
-        
-        /* Resaltar opción seleccionada */
-        [data-testid="stSidebar"] [data-testid="stRadio"] [aria-checked="true"] ~ div p {
-            color: #36C9D5 !important;
-            font-weight: bold;
-            text-shadow: 0 0 8px rgba(54, 201, 213, 0.8);
+            background-color: #16191D !important;
+            border-right: 1px solid #2A2E35;
         }
 
-        .stButton>button {
-            background-color: #1E293B;
-            color: #FFFFFF;
-            border: 1px solid #36C9D5;
+        /* Títulos Principales */
+        h1, h2, h3 {
+            color: #FFFFFF !important;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            letter-spacing: -0.5px;
         }
-        .stButton>button:hover { background-color: #36C9D5; color: #000000; }
+        
+        h1 { font-size: 1.8rem !important; margin-bottom: 1.5rem !important; }
+        h2 { font-size: 1.3rem !important; margin-top: 1.5rem !important; margin-bottom: 1rem !important; border-bottom: 1px solid #2A2E35; padding-bottom: 0.5rem; }
+        h3 { font-size: 1.1rem !important; color: #94A3B8 !important; text-transform: uppercase; letter-spacing: 1px; font-size: 0.85rem !important; }
 
+        /* Tarjetas de Métricas (Estilo Institucional, sin Glassmorphism) */
         [data-testid="stMetric"] {
-            background: rgba(30, 41, 59, 0.8) !important;
-            border-left: 4px solid #36C9D5 !important;
-            border-radius: 8px;
-            padding: 15px;
+            background-color: #1A1D23 !important;
+            border: 1px solid #2A2E35;
+            border-radius: 6px;
+            padding: 16px;
+            box-shadow: none;
         }
-        [data-testid="stMetricLabel"] > div, [data-testid="stMetricLabel"] p { color: #FFFFFF !important; }
+        
+        /* Valores de las Métricas */
         [data-testid="stMetricValue"] > div {
-            color: #36C9D5 !important;
-            font-family: 'Share Tech Mono', monospace;
-            text-shadow: 0 0 10px rgba(54, 201, 213, 0.8);
+            color: #E2E8F0 !important;
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 500;
+            font-size: 24px !important;
+        }
+        [data-testid="stMetricLabel"] > div {
+            color: #94A3B8 !important;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px !important;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Delta (Positivo/Negativo) */
+        [data-testid="stMetricDelta"] > div {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px !important;
+            font-weight: 500;
         }
 
+        /* Botones (Azul Institucional) */
+        .stButton>button {
+            background-color: #2A2E35;
+            color: #E2E8F0;
+            border: 1px solid #3F444D;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .stButton>button:hover {
+            background-color: #3B82F6;
+            color: #FFFFFF;
+            border-color: #3B82F6;
+        }
+        
+        /* Botón Primario (Reiniciar) */
+        .stButton>button[kind="primary"] {
+            background-color: #3B82F6;
+            color: white;
+            border: none;
+        }
+        .stButton>button[kind="primary"]:hover {
+            background-color: #2563EB;
+        }
+
+        /* Radio Buttons del Sidebar */
+        [data-testid="stRadio"] label p {
+            color: #94A3B8 !important;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        [data-testid="stRadio"] [aria-checked="true"] ~ div p {
+            color: #FFFFFF !important;
+        }
+
+        /* Inputs y Selectores */
+        .stSelectbox > div > div, .stNumberInput > div > div {
+            background-color: #1A1D23 !important;
+            border: 1px solid #2A2E35 !important;
+            color: #E2E8F0 !important;
+            border-radius: 4px;
+        }
+
+        /* Tablas (Estilo Institucional) */
         .nexora-table {
-            width: 100%; border-collapse: collapse; background: rgba(30, 41, 59, 0.8);
-            border: 1px solid #36C9D5; font-family: 'Share Tech Mono', monospace; font-size: 15px;
+            width: 100%; 
+            border-collapse: collapse; 
+            background-color: #1A1D23; 
+            border: 1px solid #2A2E35; 
+            border-radius: 6px; 
+            overflow: hidden;
+            font-family: 'Roboto Mono', monospace; 
+            font-size: 13px;
         }
         .nexora-table th {
-            background: rgba(22, 139, 206, 0.4); color: #FFFFFF; text-align: left;
-            padding: 12px; border-bottom: 2px solid #36C9D5;
+            background-color: #0F1115; 
+            color: #94A3B8; 
+            text-align: left;
+            padding: 12px 16px; 
+            border-bottom: 1px solid #2A2E35; 
+            font-family: 'Inter', sans-serif; 
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .nexora-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #FFFFFF; }
-        .nexora-table tr:hover { background: rgba(54, 201, 213, 0.2); }
+        .nexora-table td { 
+            padding: 12px 16px; 
+            border-bottom: 1px solid #2A2E35; 
+            color: #E2E8F0; 
+        }
+        .nexora-table tr:hover { 
+            background-color: #232730; 
+        }
         
-        #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+        /* Logs del Bot (Estilo Terminal) */
+        .bot-logs {
+            background-color: #000000; 
+            border: 1px solid #2A2E35; 
+            border-radius: 4px;
+            padding: 16px; 
+            font-family: 'Roboto Mono', monospace; 
+            font-size: 12px;
+            height: 450px; 
+            overflow-y: auto; 
+            color: #94A3B8; 
+        }
     </style>
     """, unsafe_allow_html=True)
