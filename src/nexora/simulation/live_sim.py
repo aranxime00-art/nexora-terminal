@@ -14,7 +14,8 @@ class LiveSimulator:
         init_db(self.engine)
         self.trader = PaperTradingEngine(self.engine, commission_rate=0.001, slippage_rate=0.001)
         self.exchange = ccxt.mexc()
-        # Lista ampliada a 30 activos
+        
+        # Los 30 activos a monitorear
         self.tickers = [
             "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
             "DOGE/USDT", "DOT/USDT", "LINK/USDT", "TON/USDT", "POL/USDT",
@@ -39,57 +40,74 @@ class LiveSimulator:
         signals = {}
         for symbol in self.tickers:
             try:
-                print(f"   [API] Consultando {symbol}...")
                 ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe='1h', limit=50)
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 prices[symbol] = df['close'].iloc[-1]
+                
+                # Estrategia: Momentum a 1 mes menos penalización por RSI alto
                 mom = calculate_momentum(df['close'])['mom_1m']
                 rsi = calculate_rsi(df['close'])
-                signals[symbol] = mom - (rsi / 1000)
-            except Exception as e:
-                print(f"   [ERROR] No se pudo obtener {symbol}: {e}")
+                signals[symbol] = mom - (rsi / 1000) 
+            except Exception:
+                pass
         return prices, signals
 
     def execute_cycle(self) -> None:
         print("\n==================================================")
-        print("--- INICIANDO CICLO DE ANÁLISIS CUANTITATIVO (30 ACTIVOS) ---")
+        print("🔍 ESCANEANDO 30 ACTIVOS EN BUSCA DE OPORTUNIDADES...")
         print("==================================================")
         
         prices, signals = self.get_market_data()
         if not prices:
-            print("❌ No se obtuvieron datos. Reintentando...")
+            print("❌ Error de conexión. Reintentando...")
             return
             
         self.update_market_prices(prices)
-            
+        
+        # Encontrar el mejor activo
         top_ticker = max(signals, key=signals.get)
-        print(f"✅ Mejor activo: {top_ticker} (Score: {signals[top_ticker]:.4f})")
+        top_score = signals[top_ticker]
+        
+        print(f"💡 El mejor activo detectado es: {top_ticker} (Score: {top_score:.4f})")
 
         with Session(self.engine) as session:
             acc = session.query(Account).first()
+            pos = session.query(Position).first() # Revisar si ya tenemos una posición abierta
+
             if not acc:
                 session.add(Account(cash=50000.0, initial_capital=50000.0))
                 session.commit()
+                
+            # LÓGICA DE VENTA: Si tenemos una posición pero ya no es el mejor activo, la vendemos
+            if pos and pos.ticker != top_ticker:
+                print(f"🔄 Cambio de oportunidad: Vendiendo {pos.ticker} para comprar {top_ticker}...")
+                target_weights = {pos.ticker: 0.0, top_ticker: 0.95}
+                self.trader.execute_rebalance(target_weights, prices)
+                print(f"✅ Venta de {pos.ticker} ejecutada.")
+            
+            # LÓGICA DE COMPRA: Si no tenemos nada o acabamos de vender, compramos el nuevo mejor
+            elif not pos:
+                print(f"🚀 Oportunidad de compra: Adquiriendo {top_ticker}...")
+                target_weights = {top_ticker: 0.95}
+                self.trader.execute_rebalance(target_weights, prices)
+                print(f"✅ Compra de {top_ticker} ejecutada.")
+            
+            else:
+                print(f"⏳ Manteniendo posición actual en {top_ticker}. Esperando mejor oportunidad...")
 
-        target_weights = {top_ticker: 0.95}
-        self.trader.execute_rebalance(target_weights, prices)
-        print(f"🚀 Rebalanceo ejecutado. Portafolio asignado a {top_ticker}.")
-        print(f"⏳ Esperando para el siguiente análisis...\n")
+        print(f"💤 Esperando 10 segundos para el próximo escaneo...")
 
-    def run_forever(self, interval_seconds: int = 2) -> None:
+    def run_forever(self, interval_seconds: int = 10) -> None:
         print("==================================================")
-        print("🟢 NEXORA AUTONOMOUS BOT INICIADO (MEXC LIVE - 30 ACTIVOS) 🟢")
+        print("🟢 NEXORA AUTONOMOUS BOT (24/7) INICIADO 🟢")
         print("==================================================")
         while True:
             try:
                 self.execute_cycle()
-                for i in range(interval_seconds):
-                    time.sleep(1)
-                    print(f"   [SISTEMA VIVO] Próximo análisis en {interval_seconds - i} segundos...", end="\r")
-                print(" " * 60, end="\r")
+                time.sleep(interval_seconds)
             except KeyboardInterrupt:
-                print("\n🛑 Simulador detenido.")
+                print("\n🛑 Bot detenido.")
                 break
             except Exception as e:
-                print(f"\n❌ Error en el ciclo: {e}")
+                print(f"\n❌ Error: {e}")
                 time.sleep(interval_seconds)
