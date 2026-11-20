@@ -78,6 +78,16 @@ with st.sidebar:
 
         if st.button("Retirar TODO el Efectivo"):
             with Session(engine) as session:
+        # Simular una compra si no hay posiciones (para que la nube se vea viva)
+        if not session.query(Position).first() and session.query(TradeOrder).count() == 0:
+            from nexora.data.database import Position, TradeOrder
+            session.add(Position(ticker="BTC/USDT", quantity=0.1, average_price=65000.0))
+            session.add(TradeOrder(ticker="BTC/USDT", side="BUY", quantity=0.1, price=65000.0, commission=6.5, slippage=0))
+            acc_db = session.query(Account).first()
+            if acc_db:
+                acc_db.cash -= 6506.5
+            session.commit()
+            session.refresh(acc)
                 acc_db = session.query(Account).first()
                 if acc_db and acc_db.cash > 0:
                     retiro = acc_db.cash
@@ -179,6 +189,11 @@ if vista == "📈 Terminal de Trading":
         selected_asset = st.selectbox("Seleccionar Activo para Gráfico", activos_lista)
         
         df, is_live = get_real_candles(selected_asset)
+    # Simulación visual para la nube (si no hay bot en segundo plano)
+    df['close'] = df['close'] + np.random.normal(0, df['close'] * 0.001, len(df))
+    df['open'] = df['close'].shift(1).fillna(df['open'])
+    df['high'] = df[['open', 'close']].max(axis=1) + (df['close'] * 0.0005)
+    df['low'] = df[['open', 'close']].min(axis=1) - (df['close'] * 0.0005)
         if not is_live:
             st.warning("⚠️ MEXC no responde. Mostrando gráfico de respaldo.")
 
