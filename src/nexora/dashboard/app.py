@@ -16,11 +16,11 @@ count = st_autorefresh(interval=1000, limit=None, key="nexora_refresh")
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
     st.session_state.cash = 50000.0
-    st.session_state.positions = {"BTC/USDT": 0.1} # Compra inicial
+    st.session_state.positions = {"BTC/USDT": {"qty": 0.1, "buy_price": 65000.0}}
     st.session_state.prices = {"BTC/USDT": 65000.0}
     st.session_state.orders = [{"time": datetime.now().strftime('%H:%M:%S'), "ticker": "BTC/USDT", "side": "BUY", "price": 65000.0}]
     st.session_state.equity_history = []
-    st.session_state.cash -= (0.1 * 65000.0) # Restar el costo inicial
+    st.session_state.cash -= (0.1 * 65000.0)
 
 @st.cache_data(ttl=5) 
 def get_real_candles(symbol: str):
@@ -81,27 +81,47 @@ with st.sidebar:
 if vista == "📈 Terminal de Trading":
     st.title("Terminal de Trading (Simulador MEXC)")
     
-    # Simulador de fluctuación de precios (Se ejecuta en cada refresco)
-    for ticker in st.session_state.positions:
+    # 1. Simulador de fluctuación de precios
+    for ticker in list(st.session_state.positions.keys()):
         if ticker not in st.session_state.prices:
-            st.session_state.prices[ticker] = 65000.0 if "BTC" in ticker else 3500.0
+            st.session_state.prices[ticker] = 65000.0
         
-        # Hacer que el precio fluctúe aleatoriamente entre -0.15% y +0.15% cada segundo
-        change = np.random.normal(0, 0.0015)
+        # Cambio aleatorio entre -0.5% y +0.5% para simular volatilidad
+        change = np.random.normal(0, 0.005)
         st.session_state.prices[ticker] = st.session_state.prices[ticker] * (1 + change)
         
+        # LÓGICA DE STOP-LOSS Y TAKE-PROFIT
+        buy_price = st.session_state.positions[ticker]["buy_price"]
+        curr_price = st.session_state.prices[ticker]
+        pnl_pct = (curr_price - buy_price) / buy_price
+        
+        if pnl_pct <= -0.05: # STOP LOSS AL 5%
+            qty = st.session_state.positions[ticker]["qty"]
+            revenue = qty * curr_price
+            st.session_state.cash += revenue
+            st.session_state.orders.insert(0, {"time": datetime.now().strftime('%H:%M:%S'), "ticker": ticker, "side": "SELL (STOP-LOSS)", "price": curr_price})
+            del st.session_state.positions[ticker]
+            st.toast(f"🛑 STOP-LOSS Activado en {ticker} (-5%)")
+            
+        elif pnl_pct >= 0.10: # TAKE PROFIT AL 10%
+            qty = st.session_state.positions[ticker]["qty"]
+            revenue = qty * curr_price
+            st.session_state.cash += revenue
+            st.session_state.orders.insert(0, {"time": datetime.now().strftime('%H:%M:%S'), "ticker": ticker, "side": "SELL (TAKE-PROFIT)", "price": curr_price})
+            del st.session_state.positions[ticker]
+            st.toast(f"🎯 TAKE-PROFIT Activado en {ticker} (+10%)")
+
     prices = st.session_state.prices
     pos = st.session_state.positions
     cash = st.session_state.cash
     orders = st.session_state.orders
 
-    total_positions_value = sum(qty * prices.get(ticker, 0) for ticker, qty in pos.items())
-    pnl_total = sum((prices.get(t, 0) - 65000.0) * q for t, q in pos.items() if "BTC" in t) # Aproximación simple
+    total_positions_value = sum(p["qty"] * prices.get(ticker, 0) for ticker, p in pos.items())
+    pnl_total = sum((prices.get(t, 0) - p["buy_price"]) * p["qty"] for t, p in pos.items())
     total_equity = cash + total_positions_value
     initial_cap = 50000.0
     total_return = total_equity - initial_cap
 
-    # Guardar historial
     if len(st.session_state.equity_history) == 0 or st.session_state.equity_history[-1]['equity'] != total_equity:
         st.session_state.equity_history.append({'time': datetime.now(), 'equity': total_equity})
         if len(st.session_state.equity_history) > 100:
@@ -153,7 +173,6 @@ if vista == "📈 Terminal de Trading":
         
         df, is_live = get_real_candles(selected_asset)
         
-        # Simulación visual para que las velas se muevan en la nube
         df['close'] = df['close'] + np.random.normal(0, df['close'] * 0.001, len(df))
         df['open'] = df['close'].shift(1).fillna(df['open'])
         df['high'] = df[['open', 'close']].max(axis=1) + (df['close'] * 0.0005)
@@ -187,11 +206,11 @@ if vista == "📈 Terminal de Trading":
             st.markdown("<div style='background-color: #1E293B; padding: 15px; border-radius: 5px; color: #FFFFFF;'>Sin posiciones. El bot está analizando.</div>", unsafe_allow_html=True)
         else:
             html = "<table class='nexora-table'><tr><th>Activo</th><th>Cant</th><th>Compra</th><th>Actual</th><th>P&L</th></tr>"
-            for ticker, qty in pos.items():
-                curr_price = prices.get(ticker, 65000.0)
-                pnl = (curr_price - 65000.0) * qty
+            for ticker, p in pos.items():
+                curr_price = prices.get(ticker, p["buy_price"])
+                pnl = (curr_price - p["buy_price"]) * p["qty"]
                 color = "#10B981" if pnl >= 0 else "#EF4444"
-                html += f"<tr><td>{ticker.split('/')[0]}</td><td>{qty:.4f}</td><td>${65000.0:,.2f}</td><td>${curr_price:,.2f}</td><td style='color:{color}; font-weight:bold;'>{pnl:+,.2f}</td></tr>"
+                html += f"<tr><td>{ticker.split('/')[0]}</td><td>{p['qty']:.4f}</td><td>${p['buy_price']:,.2f}</td><td>${curr_price:,.2f}</td><td style='color:{color}; font-weight:bold;'>{pnl:+,.2f}</td></tr>"
             html += "</table>"
             st.markdown(html, unsafe_allow_html=True)
 
@@ -213,7 +232,7 @@ if vista == "📈 Terminal de Trading":
     with col_pie:
         st.subheader("Portfolio Allocation")
         labels = ['Cash'] + [t.split('/')[0] for t in pos.keys()]
-        values = [cash] + [qty * prices.get(ticker, 0) for ticker, qty in pos.items()]
+        values = [cash] + [p["qty"] * prices.get(ticker, 0) for ticker, p in pos.items()]
         
         fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.6, marker=dict(colors=['#36C9D5', '#A855F7', '#10B981', '#F59E0B', '#EF4444']))])
         fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FFFFFF'), margin=dict(l=0, r=0, t=10, b=0), height=250, showlegend=False, annotations=[dict(text='Assets', x=0.5, y=0.5, font_size=15, showarrow=False, font_color="#FFF")])
@@ -233,119 +252,7 @@ if vista == "📈 Terminal de Trading":
     else:
         html_orders = "<table class='nexora-table'><tr><th>Hora</th><th>Activo</th><th>Acción</th><th>Precio</th></tr>"
         for o in orders[:5]:
-            color = "#10B981" if o["side"] in ["BUY", "WITHDRAW"] else "#EF4444"
+            color = "#10B981" if "BUY" in o["side"] else "#EF4444"
             html_orders += f"<tr><td>{o['time']}</td><td>{o['ticker'].split('/')[0]}</td><td style='color:{color}; font-weight:bold;'>{o['side']}</td><td>${o['price']:,.2f}</td></tr>"
         html_orders += "</table>"
         st.markdown(html_orders, unsafe_allow_html=True)
-
-# --- VISTA 2: ANÁLISIS DE MERCADO ---
-elif vista == "🌡️ Análisis de Mercado":
-    st.title("Visión Macro del Mercado")
-    st.markdown("Mapa de calor de rendimiento y matriz de correlación de los 30 activos.")
-    
-    activos_lista = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "DOT", "LINK", "TON", "POL", "AVAX", "SUI", "LTC", "BCH", "ATOM", "NEAR", "APT", "ARB", "OP", "INJ", "SEI", "TIA", "PEPE", "SHIB", "TRX", "ETC", "FIL", "HBAR", "ICP", "ALGO"]
-    
-    np.random.seed(int(datetime.now().timestamp() / 10))
-    changes = np.random.normal(0, 3, len(activos_lista)) 
-    
-    st.subheader("Market Heatmap (24h)")
-    fig_heatmap = go.Figure(go.Treemap(
-        labels=activos_lista, parents=[""] * len(activos_lista), values=[1] * len(activos_lista),
-        text=[f"{c:+.2f}%" for c in changes], textinfo="label+text",
-        marker=dict(colors=changes, colorscale="RdYlGn", cmid=0, line=dict(width=2, color="#0B1120")),
-        textfont=dict(family="Share Tech Mono", size=16, color="white")
-    ))
-    fig_heatmap.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), height=400)
-    st.plotly_chart(fig_heatmap, use_container_width=True)
-
-    st.divider()
-
-    st.subheader("Correlation Matrix")
-    st.markdown("Valores cercanos a **1 (Azul)** indican que se mueven juntos. Valores cercanos a **-1 (Rojo)** indican que se mueven en direcciones opuestas.")
-    
-    size = len(activos_lista)
-    base_corr = np.random.uniform(-0.2, 0.8, (size, size))
-    corr_matrix = (base_corr + base_corr.T) / 2 
-    np.fill_diagonal(corr_matrix, 1.0) 
-    corr_matrix = np.clip(corr_matrix, -1, 1)
-    
-    fig_corr = go.Figure(data=go.Heatmap(
-        z=corr_matrix, x=activos_lista, y=activos_lista, colorscale='RdBu', zmin=-1, zmax=1,
-        colorbar=dict(title="Correlación", tickfont=dict(color="white"), title_font=dict(color="white"))
-    ))
-    
-    fig_corr.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#FFFFFF', family="Share Tech Mono"),
-        xaxis=dict(tickangle=-45, tickfont=dict(size=10)), yaxis=dict(tickfont=dict(size=10)),
-        margin=dict(l=0, r=0, t=10, b=0), height=700
-    )
-    st.plotly_chart(fig_corr, use_container_width=True)
-
-# --- VISTA 3: RED NEURONAL LSTM ---
-elif vista == "🧠 Red Neuronal LSTM":
-    st.title("Laboratorio de Inteligencia Artificial")
-    st.markdown("Monitoreo de la red neuronal **LSTM (Long Short-Term Memory)**.")
-    
-    col1, col2, col3 = st.columns(3)
-    loss = 0.0012 + (np.sin(count * 0.1) * 0.0001)
-    acc = 68.4 + (np.cos(count * 0.1) * 0.5)
-    
-    col1.metric("Pérdida (MSE)", f"{loss:.4f}", "-0.0001")
-    col2.metric("Épocas Entrenadas", count * 2, "En vivo")
-    col3.metric("Precisión Tendencia", f"{acc:.1f}%", "+0.2%")
-    
-    st.divider()
-    
-    col_net, col_loss = st.columns([1.5, 1])
-    
-    with col_net:
-        st.subheader("Topología de la Red Neuronal (Linear)")
-        np.random.seed(42) 
-        
-        x_in, y_in, z_in = np.zeros(5), np.linspace(-2, 2, 5), np.zeros(5)
-        x_hid, y_hid, z_hid = np.full(15, 3.0), np.linspace(-2.5, 2.5, 15), np.zeros(15)
-        x_out, y_out, z_out = np.array([6.0]), np.array([0.0]), np.array([0.0])
-        
-        fig = go.Figure()
-        
-        for i in range(5):
-            for j in range(15):
-                fig.add_trace(go.Scatter3d(x=[x_in[i], x_hid[j]], y=[y_in[i], y_hid[j]], z=[z_in[i], z_hid[j]],
-                    mode='lines', line=dict(color='rgba(54, 201, 213, 0.2)', width=2), showlegend=False, hoverinfo='none'))
-                
-        for j in range(15):
-            fig.add_trace(go.Scatter3d(x=[x_hid[j], x_out[0]], y=[y_hid[j], y_out[0]], z=[z_hid[j], z_out[0]],
-                mode='lines', line=dict(color='rgba(168, 85, 247, 0.2)', width=2), showlegend=False, hoverinfo='none'))
-
-        fig.add_trace(go.Scatter3d(x=x_in, y=y_in, z=z_in, mode='markers', name='Input', marker=dict(size=10, color='#36C9D5')))
-        fig.add_trace(go.Scatter3d(x=x_hid, y=y_hid, z=z_hid, mode='markers', name='LSTM Cell', marker=dict(size=12, color='#A855F7')))
-        fig.add_trace(go.Scatter3d(x=x_out, y=y_out, z=z_out, mode='markers', name='Output', marker=dict(size=18, color='#F59E0B', symbol='diamond')))
-        
-        fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', 
-            scene=dict(
-                xaxis=dict(showbackground=False, showgrid=False, showticklabels=False),
-                yaxis=dict(showbackground=False, showgrid=False, showticklabels=False),
-                zaxis=dict(showbackground=False, showgrid=False, showticklabels=False),
-                bgcolor='rgba(0,0,0,0)', camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
-            ),
-            margin=dict(l=0, r=0, t=0, b=0), height=450,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color='#FFFFFF'))
-        )
-        st.plotly_chart(fig, use_container_width=True, key=f"lstm_3d_static")
-        
-    with col_loss:
-        st.subheader("Curva de Aprendizaje")
-        epochs = np.arange(1, 101)
-        loss_curve = 0.01 * np.exp(-epochs/20) + np.random.normal(0, 0.0002, 100)
-        
-        fig_loss = go.Figure()
-        fig_loss.add_trace(go.Scatter(x=epochs, y=loss_curve, mode='lines', line=dict(color='#10B981', width=2)))
-        fig_loss.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#FFFFFF'), xaxis=dict(title='Épocas', showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
-            yaxis=dict(title='Loss (MSE)', gridcolor='rgba(255,255,255,0.1)'),
-            margin=dict(l=0, r=0, t=10, b=0), height=250
-        )
-        st.plotly_chart(fig_loss, use_container_width=True)
