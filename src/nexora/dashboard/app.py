@@ -14,7 +14,8 @@ st.set_page_config(page_title="NEXORA | Terminal", page_icon="📈", layout="wid
 apply_custom_css()
 
 count = st_autorefresh(interval=1000, limit=None, key="nexora_refresh")
-engine = get_engine()
+from sqlalchemy import create_engine
+engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 init_db(engine)
 
 if 'equity_history' not in st.session_state:
