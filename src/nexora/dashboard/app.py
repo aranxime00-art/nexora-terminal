@@ -80,19 +80,16 @@ for ticker in list(st.session_state.positions.keys()):
     change = np.random.normal(0, 0.002)
     st.session_state.prices[ticker] = st.session_state.prices[ticker] * (1 + change)
 
-# --- HEADER Y NAVEGACIÓN HORIZONTAL (REORDENADO) ---
+# --- HEADER Y NAVEGACIÓN HORIZONTAL ---
 col_logo, col_nav, col_status = st.columns([1, 2, 1])
 
 with col_logo:
-    # Logo NEXORA a la izquierda
     st.markdown("<div style='font-size: 26px; font-weight: 700; color: #FFFFFF; letter-spacing: 1px;'>NEXORA</div>", unsafe_allow_html=True)
 
 with col_nav:
-    # Navegación al centro
     vista = st.radio("NAV", ["Terminal de Trading", "Análisis de Mercado", "Red Neuronal LSTM"], horizontal=True, label_visibility="collapsed")
 
 with col_status:
-    # Versión, Estado y Botón a la derecha
     st.markdown("<div style='text-align: right; font-family: Roboto Mono; font-size: 12px; color: #94A3B8; margin-bottom: 5px;'>v1.0.0 | 🟢 ACTIVE</div>", unsafe_allow_html=True)
     if st.button("Actualizar Datos", use_container_width=True):
         st.rerun()
@@ -118,17 +115,68 @@ if vista == "Terminal de Trading":
         if len(st.session_state.equity_history) > 100:
             st.session_state.equity_history.pop(0)
 
-    # Layout: Gráfico a la Izquierda (70%), Métricas a la Derecha (30%)
-    col_chart, col_right_panel = st.columns([2.8, 1])
+    # Layout: Izquierda (Gráficos y Tablas), Derecha (Métricas y Logs)
+    col_left, col_right = st.columns([2.8, 1])
 
-    with col_right_panel:
+    with col_left:
+        current_asset = list(pos.keys())[0] if pos else "BTC/USDT"
+        selected_asset = st.selectbox("Activo en pantalla", [current_asset, "BTC/USDT", "ETH/USDT", "SOL/USDT"], label_visibility="collapsed")
+        
+        df = pd.DataFrame({
+            'timestamp': [datetime.now() - timedelta(minutes=i) for i in range(60, 0, -1)],
+            'close': [prices.get(selected_asset, 65000.0) * (1 + np.random.normal(0, 0.002)) for _ in range(60)]
+        })
+        df['open'] = df['close'].shift(1).fillna(df['close'])
+        df['high'] = df[['open', 'close']].max(axis=1) * 1.001
+        df['low'] = df[['open', 'close']].min(axis=1) * 0.999
+        df['SMA_20'] = df['close'].rolling(window=20).mean()
+
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
+        fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], increasing_line_color='#10B981', decreasing_line_color='#EF4444'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['SMA_20'], mode='lines', line=dict(color='#F59E0B', width=2), name="SMA 20"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=[50]*60, mode='lines', line=dict(color='#A855F7', width=2), name="RSI"), row=2, col=1)
+        
+        fig.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#94A3B8', family='Inter'), showlegend=False,
+            xaxis=dict(showgrid=True, gridcolor='#2A2E35', rangeslider=dict(visible=False)),
+            yaxis=dict(showgrid=True, gridcolor='#2A2E35'),
+            yaxis2=dict(showgrid=True, gridcolor='#2A2E35', range=[0, 100]),
+            margin=dict(l=0, r=0, t=10, b=0), height=450
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### CURVA DE CAPITAL")
+        if len(st.session_state.equity_history) > 1:
+            df_equity = pd.DataFrame(st.session_state.equity_history)
+            fig_eq = go.Figure()
+            fig_eq.add_trace(go.Scatter(x=df_equity['time'], y=df_equity['equity'], mode='lines', fill='tozeroy', line=dict(color='#3B82F6', width=2), fillcolor='rgba(59, 130, 246, 0.1)'))
+            fig_eq.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#94A3B8'), xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#2A2E35'),
+                margin=dict(l=0, r=0, t=10, b=0), height=180
+            )
+            st.plotly_chart(fig_eq, use_container_width=True)
+
+        st.markdown("### HISTORIAL DE ÓRDENES")
+        if orders:
+            html_orders = "<table class='nexora-table'><tr><th>Hora</th><th>Activo</th><th>Acción</th><th>Precio</th></tr>"
+            for o in orders[:5]: # Mostramos las últimas 5
+                color = "#10B981" if "BUY" in o["side"] else "#EF4444"
+                html_orders += f"<tr><td>{o['time']}</td><td>{o['ticker'].split('/')[0]}</td><td style='color:{color}; font-weight:bold;'>{o['side']}</td><td>${o['price']:,.2f}</td></tr>"
+            html_orders += "</table>"
+            st.markdown(html_orders, unsafe_allow_html=True)
+        else:
+            st.info("Sin órdenes registradas.")
+
+    with col_right:
         st.markdown("### RESUMEN")
         st.metric("PATRIMONIO TOTAL", "${:,.2f}".format(total_equity), "{:+,.2f}".format(total_return))
         st.metric("EFECTIVO LIBRE", "${:,.2f}".format(cash), "Disponible")
         st.metric("VALOR EN ACTIVOS", "${:,.2f}".format(total_positions_value), "En el mercado")
         st.metric("P&L NO REALIZADO", "${:,.2f}".format(pnl_total), "Ganancia/Pérdida")
         
-        st.markdown("### MÉTRICAS DE RIESGO")
+        st.markdown("### RIESGO")
         
         if len(st.session_state.equity_history) < 10:
             np.random.seed(42)
@@ -154,7 +202,7 @@ if vista == "Terminal de Trading":
         st.metric("MAX DRAWDOWN", f"{max_dd:.2f}%", "Peor caída")
         st.metric("VaR (95% 1m)", f"${var_95:,.2f}", "Riesgo")
         
-        st.markdown("### GESTIÓN DE CUENTA")
+        st.markdown("### CUENTA")
         capital_inicial = st.number_input("Capital (USD)", min_value=100.0, value=50000.0, step=1000.0, label_visibility="collapsed")
         
         if st.button("Reiniciar Cuenta"):
@@ -172,86 +220,26 @@ if vista == "Terminal de Trading":
                 st.session_state.orders.insert(0, {"time": datetime.now().strftime('%H:%M:%S'), "ticker": "RETIRO", "side": "WITHDRAW", "price": retiro})
             st.rerun()
 
-    with col_chart:
-        current_asset = list(pos.keys())[0] if pos else "BTC/USDT"
-        selected_asset = st.selectbox("Activo en pantalla", [current_asset, "BTC/USDT", "ETH/USDT", "SOL/USDT"], label_visibility="collapsed")
-        
-        df = pd.DataFrame({
-            'timestamp': [datetime.now() - timedelta(minutes=i) for i in range(60, 0, -1)],
-            'close': [prices.get(selected_asset, 65000.0) * (1 + np.random.normal(0, 0.002)) for _ in range(60)]
-        })
-        df['open'] = df['close'].shift(1).fillna(df['close'])
-        df['high'] = df[['open', 'close']].max(axis=1) * 1.001
-        df['low'] = df[['open', 'close']].min(axis=1) * 0.999
-        df['SMA_20'] = df['close'].rolling(window=20).mean()
-
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
-        fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], increasing_line_color='#10B981', decreasing_line_color='#EF4444'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['SMA_20'], mode='lines', line=dict(color='#F59E0B', width=2), name="SMA 20"), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=[50]*60, mode='lines', line=dict(color='#A855F7', width=2), name="RSI"), row=2, col=1)
-        
-        fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#94A3B8', family='Inter'), showlegend=False,
-            xaxis=dict(showgrid=True, gridcolor='#2A2E35', rangeslider=dict(visible=False)),
-            yaxis=dict(showgrid=True, gridcolor='#2A2E35'),
-            yaxis2=dict(showgrid=True, gridcolor='#2A2E35', range=[0, 100]),
-            margin=dict(l=0, r=0, t=10, b=0), height=500
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-    col_bot_left, col_bot_right = st.columns([1.5, 1])
-
-    with col_bot_left:
-        st.markdown("### CURVA DE CAPITAL")
-        if len(st.session_state.equity_history) > 1:
-            df_equity = pd.DataFrame(st.session_state.equity_history)
-            fig_eq = go.Figure()
-            fig_eq.add_trace(go.Scatter(x=df_equity['time'], y=df_equity['equity'], mode='lines', fill='tozeroy', line=dict(color='#3B82F6', width=2), fillcolor='rgba(59, 130, 246, 0.1)'))
-            fig_eq.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#94A3B8'), xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#2A2E35'),
-                margin=dict(l=0, r=0, t=10, b=0), height=200
-            )
-            st.plotly_chart(fig_eq, use_container_width=True)
-
-    with col_bot_right:
         st.markdown("### LIVE BOT FEED")
-        logs_html = "<div class='bot-logs'>"
-        for log in st.session_state.bot_logs:
+        logs_html = "<div class='bot-logs' style='height: 150px;'>"
+        for log in st.session_state.bot_logs[:5]:
             color = "#10B981" if "Comprando" in log else "#EF4444" if "Vendiendo" in log else "#94A3B8"
             logs_html += f"<div style='color: {color}; margin-bottom: 4px;'>{log}</div>"
         logs_html += "</div>"
         st.markdown(logs_html, unsafe_allow_html=True)
 
-    st.divider()
-    
-    col_data, col_pie = st.columns([1.5, 1])
-    with col_data:
-        st.markdown("### POSICIONES Y ÓRDENES")
+        st.markdown("### POSICIONES")
         if not pos:
-            st.info("Sin posiciones abiertas.")
+            st.info("Sin posiciones.")
         else:
-            html = "<table class='nexora-table'><tr><th>Activo</th><th>Cant</th><th>Compra</th><th>Actual</th><th>P&L</th></tr>"
+            html_pos = "<table class='nexora-table'><tr><th>Activo</th><th>Cant</th><th>P&L</th></tr>"
             for ticker, p in pos.items():
                 curr_price = prices.get(ticker, p["buy_price"])
                 pnl = (curr_price - p["buy_price"]) * p["qty"]
                 color = "#10B981" if pnl >= 0 else "#EF4444"
-                html += f"<tr><td>{ticker.split('/')[0]}</td><td>{p['qty']:.4f}</td><td>${p['buy_price']:,.2f}</td><td>${curr_price:,.2f}</td><td style='color:{color}; font-weight:bold;'>{pnl:+,.2f}</td></tr>"
-            html += "</table>"
-            st.markdown(html, unsafe_allow_html=True)
-
-    with col_pie:
-        st.markdown("### HISTORIAL DE ÓRDENES")
-        if orders:
-            html_orders = "<table class='nexora-table'><tr><th>Hora</th><th>Activo</th><th>Acción</th><th>Precio</th></tr>"
-            for o in orders[:4]:
-                color = "#10B981" if "BUY" in o["side"] else "#EF4444"
-                html_orders += f"<tr><td>{o['time']}</td><td>{o['ticker'].split('/')[0]}</td><td style='color:{color}; font-weight:bold;'>{o['side']}</td><td>${o['price']:,.2f}</td></tr>"
-            html_orders += "</table>"
-            st.markdown(html_orders, unsafe_allow_html=True)
+                html_pos += f"<tr><td>{ticker.split('/')[0]}</td><td>{p['qty']:.4f}</td><td style='color:{color}; font-weight:bold;'>{pnl:+,.2f}</td></tr>"
+            html_pos += "</table>"
+            st.markdown(html_pos, unsafe_allow_html=True)
 
 # --- VISTA 2: ANÁLISIS DE MERCADO ---
 elif vista == "Análisis de Mercado":
