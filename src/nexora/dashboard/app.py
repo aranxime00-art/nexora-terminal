@@ -43,7 +43,6 @@ def scan_market():
         prices = {t: 65000.0 if "BTC" in t else 3500.0 if "ETH" in t else 150.0 for t in tickers}
         return prices, "BTC/USDT", False
 
-# Lógica del bot (sin cambios)
 if count % 10 == 0 and count != st.session_state.last_scan:
     st.session_state.last_scan = count
     real_prices, best_asset, is_live = scan_market()
@@ -81,17 +80,20 @@ for ticker in list(st.session_state.positions.keys()):
     change = np.random.normal(0, 0.002)
     st.session_state.prices[ticker] = st.session_state.prices[ticker] * (1 + change)
 
-# --- HEADER Y NAVEGACIÓN HORIZONTAL ---
+# --- HEADER Y NAVEGACIÓN HORIZONTAL (REORDENADO) ---
 col_logo, col_nav, col_status = st.columns([1, 2, 1])
 
 with col_logo:
-    st.markdown("<div class='top-bar-left'>v1.0.0 | 🟢 ACTIVE</div>", unsafe_allow_html=True)
+    # Logo NEXORA a la izquierda
+    st.markdown("<div style='font-size: 26px; font-weight: 700; color: #FFFFFF; letter-spacing: 1px;'>NEXORA</div>", unsafe_allow_html=True)
 
 with col_nav:
+    # Navegación al centro
     vista = st.radio("NAV", ["Terminal de Trading", "Análisis de Mercado", "Red Neuronal LSTM"], horizontal=True, label_visibility="collapsed")
 
 with col_status:
-    st.markdown("<div class='top-bar-right' style='text-align: right;'>NEXORA</div>", unsafe_allow_html=True)
+    # Versión, Estado y Botón a la derecha
+    st.markdown("<div style='text-align: right; font-family: Roboto Mono; font-size: 12px; color: #94A3B8; margin-bottom: 5px;'>v1.0.0 | 🟢 ACTIVE</div>", unsafe_allow_html=True)
     if st.button("Actualizar Datos", use_container_width=True):
         st.rerun()
 
@@ -120,15 +122,14 @@ if vista == "Terminal de Trading":
     col_chart, col_right_panel = st.columns([2.8, 1])
 
     with col_right_panel:
-        st.markdown("### Resumen")
-        st.metric("Patrimonio Total", "${:,.2f}".format(total_equity), "{:+,.2f}".format(total_return))
-        st.metric("Efectivo Libre", "${:,.2f}".format(cash), "Disponible")
-        st.metric("Valor en Activos", "${:,.2f}".format(total_positions_value), "En el mercado")
-        st.metric("P&L No Realizado", "${:,.2f}".format(pnl_total), "Ganancia/Pérdida")
+        st.markdown("### RESUMEN")
+        st.metric("PATRIMONIO TOTAL", "${:,.2f}".format(total_equity), "{:+,.2f}".format(total_return))
+        st.metric("EFECTIVO LIBRE", "${:,.2f}".format(cash), "Disponible")
+        st.metric("VALOR EN ACTIVOS", "${:,.2f}".format(total_positions_value), "En el mercado")
+        st.metric("P&L NO REALIZADO", "${:,.2f}".format(pnl_total), "Ganancia/Pérdida")
         
-        st.markdown("### Métricas de Riesgo")
+        st.markdown("### MÉTRICAS DE RIESGO")
         
-        # Risk Metrics Lógica
         if len(st.session_state.equity_history) < 10:
             np.random.seed(42)
             hist_equity = [total_equity * (1 + np.random.normal(0, 0.003)) for _ in range(50)]
@@ -149,11 +150,11 @@ if vista == "Terminal de Trading":
             max_dd, sharpe, var_95 = 0.0, 0.0, 0.0
         win_rate = 64.5 
 
-        st.metric("Sharpe Ratio", f"{sharpe:.2f}", "Riesgo/Retorno")
-        st.metric("Max Drawdown", f"{max_dd:.2f}%", "Peor caída")
+        st.metric("SHARPE RATIO", f"{sharpe:.2f}", "Riesgo/Retorno")
+        st.metric("MAX DRAWDOWN", f"{max_dd:.2f}%", "Peor caída")
         st.metric("VaR (95% 1m)", f"${var_95:,.2f}", "Riesgo")
         
-        st.markdown("### Gestión de Cuenta")
+        st.markdown("### GESTIÓN DE CUENTA")
         capital_inicial = st.number_input("Capital (USD)", min_value=100.0, value=50000.0, step=1000.0, label_visibility="collapsed")
         
         if st.button("Reiniciar Cuenta"):
@@ -172,7 +173,6 @@ if vista == "Terminal de Trading":
             st.rerun()
 
     with col_chart:
-        # Fila superior del gráfico: Selector
         current_asset = list(pos.keys())[0] if pos else "BTC/USDT"
         selected_asset = st.selectbox("Activo en pantalla", [current_asset, "BTC/USDT", "ETH/USDT", "SOL/USDT"], label_visibility="collapsed")
         
@@ -185,12 +185,10 @@ if vista == "Terminal de Trading":
         df['low'] = df[['open', 'close']].min(axis=1) * 0.999
         df['SMA_20'] = df['close'].rolling(window=20).mean()
 
-        # Gráfico de Velas Grande
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
         fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], increasing_line_color='#10B981', decreasing_line_color='#EF4444'), row=1, col=1)
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['SMA_20'], mode='lines', line=dict(color='#F59E0B', width=2), name="SMA 20"), row=1, col=1)
         
-        # RSI (simulado para la vista visual)
         fig.add_trace(go.Scatter(x=df['timestamp'], y=[50]*60, mode='lines', line=dict(color='#A855F7', width=2), name="RSI"), row=2, col=1)
         
         fig.update_layout(
@@ -203,12 +201,11 @@ if vista == "Terminal de Trading":
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    # Fila inferior del gráfico: Gráficos secundarios y tablas
     st.divider()
     col_bot_left, col_bot_right = st.columns([1.5, 1])
 
     with col_bot_left:
-        st.markdown("### Curva de Capital")
+        st.markdown("### CURVA DE CAPITAL")
         if len(st.session_state.equity_history) > 1:
             df_equity = pd.DataFrame(st.session_state.equity_history)
             fig_eq = go.Figure()
@@ -221,7 +218,7 @@ if vista == "Terminal de Trading":
             st.plotly_chart(fig_eq, use_container_width=True)
 
     with col_bot_right:
-        st.markdown("### Live Bot Feed")
+        st.markdown("### LIVE BOT FEED")
         logs_html = "<div class='bot-logs'>"
         for log in st.session_state.bot_logs:
             color = "#10B981" if "Comprando" in log else "#EF4444" if "Vendiendo" in log else "#94A3B8"
@@ -233,7 +230,7 @@ if vista == "Terminal de Trading":
     
     col_data, col_pie = st.columns([1.5, 1])
     with col_data:
-        st.markdown("### Posiciones y Órdenes")
+        st.markdown("### POSICIONES Y ÓRDENES")
         if not pos:
             st.info("Sin posiciones abiertas.")
         else:
@@ -247,7 +244,7 @@ if vista == "Terminal de Trading":
             st.markdown(html, unsafe_allow_html=True)
 
     with col_pie:
-        st.markdown("### Historial de Órdenes")
+        st.markdown("### HISTORIAL DE ÓRDENES")
         if orders:
             html_orders = "<table class='nexora-table'><tr><th>Hora</th><th>Activo</th><th>Acción</th><th>Precio</th></tr>"
             for o in orders[:4]:
@@ -341,17 +338,17 @@ elif vista == "Red Neuronal LSTM":
         st.plotly_chart(fig, use_container_width=True, key=f"lstm_3d_static")
 
     with col_monitoring:
-        st.markdown("### Neural Monitoring")
+        st.markdown("### NEURAL MONITORING")
         
         loss = 0.0012 + (np.sin(count * 0.1) * 0.0001)
         acc = 68.4 + (np.cos(count * 0.1) * 0.5)
         
-        st.metric("Pérdida (MSE)", f"{loss:.4f}", "-0.0001")
-        st.metric("Precisión Tendencia", f"{acc:.1f}%", "+0.2%")
-        st.metric("Épocas Entrenadas", count * 2, "En vivo")
+        st.metric("PÉRDIDA (MSE)", f"{loss:.4f}", "-0.0001")
+        st.metric("PRECISIÓN TENDENCIA", f"{acc:.1f}%", "+0.2%")
+        st.metric("ÉPOCAS ENTRENADAS", count * 2, "En vivo")
         
         st.divider()
-        st.markdown("### Curva de Aprendizaje")
+        st.markdown("### CURVA DE APRENDIZAJE")
         epochs = np.arange(1, 101)
         loss_curve = 0.01 * np.exp(-epochs/20) + np.random.normal(0, 0.0002, 100)
         
