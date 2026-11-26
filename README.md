@@ -39,3 +39,8 @@ Proporcionar una plataforma que permita investigar, validar y visualizar estrate
 
 ## Advertencia
 Este sistema es un proyecto académico y experimental. No constituye asesoría financiera. El trading conlleva riesgos.
+## Historial de Versiones y Avances
+- **v0.1.0 - Fase 1 & 2 (Configuración y Datos):** Creación del entorno, conexión a base de datos SQLite y motor de descarga de precios históricos.
+- **v0.5.0 - Fase 3 a 6 (Motor Cuantitativo):** Implementación de indicadores (Momentum, RSI, ATR), algoritmo de selección de activos (Composite Score) y optimización de portafolios.
+- **v0.8.0 - Fase 7 a 9 (Paper Trading y Backtesting):** Creación del motor de simulación de órdenes, cálculo de métricas de riesgo y simulador histórico.
+- **v1.0.0 - Fase 10 & 11 (IA y Despliegue):** Integración de modelos de Machine Learning (Random Forest, LSTM), rediseño institucional del dashboard en Streamlit, conexión en vivo con la API de MEXC y despliegue en la nube.
