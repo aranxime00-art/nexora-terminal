@@ -10,49 +10,103 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ccxt
-from datetime import datetime, timedelta
+from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 from nexora.dashboard.styles import apply_custom_css
-from sqlalchemy.orm import Session
-from nexora.data.database import get_engine, Account, Position, TradeOrder, MarketPrice, init_db
-from sqlalchemy import create_engine
-from nexora.factors.indicators import calculate_rsi
+from nexora.factors.indicators import calculate_momentum, calculate_rsi
 
 st.set_page_config(page_title="NEXORA | Terminal", page_icon="⚡", layout="wide")
 apply_custom_css()
-count = st_autorefresh(interval=3000, limit=None, key="nexora_refresh") # Refresco cada 3s
 
-engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-init_db(engine)
+# Refresco automático cada 5 segundos (simula el bot trabajando)
+count = st_autorefresh(interval=5000, limit=None, key="nexora_refresh")
+
+# --- ESTADO EN MEMORIA (Simula la base de datos) ---
+if 'cash' not in st.session_state:
+    st.session_state.cash = 50000.0
+    st.session_state.initial_capital = 50000.0
+    st.session_state.positions = {} # {"BTC/USDT": {"qty": 0.1, "buy_price": 60000}}
+    st.session_state.orders = []
+    st.session_state.equity_history = []
+    st.session_state.bot_logs = ["Sistema iniciado. Esperando primer escaneo..."]
+
 exchange = ccxt.mexc({'timeout': 5000})
 
-@st.cache_data(ttl=60) # Caché de 60s para no saturar MEXC
-def fetch_real_ohlcv(symbol):
-    try:
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1h', limit=100)
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        return df, "LIVE DATA"
-    except Exception as e:
-        # Fallback si MEXC falla
-        dates = [datetime.now() - timedelta(hours=i) for i in range(100, 0, -1)]
-        df = pd.DataFrame({'timestamp': dates, 'open': 0, 'high': 0, 'low': 0, 'close': 0, 'volume': 0})
-        return df, "CONNECTION ERROR"
+@st.cache_data(ttl=60) 
+def fetch_market_data(symbols):
+    prices = {}
+    signals = {}
+    data_status = "LIVE DATA"
+    
+    for s in symbols:
+        try:
+            ohlcv = exchange.fetch_ohlcv(s, timeframe='1h', limit=50)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            prices[s] = df['close'].iloc[-1]
+            
+            # Usamos tus indicadores reales
+            mom = calculate_momentum(df['close'])['mom_1m']
+            rsi = calculate_rsi(df['close'])
+            
+            if pd.isna(mom) or pd.isna(rsi):
+                signals[s] = -999
+            else:
+                signals[s] = mom - (rsi / 1000)
+        except Exception:
+            data_status = "CONNECTION ERROR"
+            
+    return prices, signals, data_status
 
-@st.cache_data(ttl=60)
-def fetch_tickers_24h():
-    symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", 
-               "DOGE/USDT", "DOT/USDT", "LINK/USDT", "TON/USDT", "POL/USDT", 
-               "AVAX/USDT", "SUI/USDT", "LTC/USDT", "BCH/USDT", "ATOM/USDT"]
-    try:
-        tickers = exchange.fetch_tickers(symbols)
-        data = []
-        for s in symbols:
-            if s in tickers:
-                data.append({"symbol": s.split('/')[0], "change": tickers[s]['percentage']})
-        return pd.DataFrame(data), "LIVE DATA"
-    except:
-        return pd.DataFrame(), "CONNECTION ERROR"
+# --- LÓGICA DEL BOT (Se ejecuta en la nube) ---
+tickers = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT"]
+prices, signals, data_status = fetch_market_data(tickers)
+
+if prices:
+    # 1. Buscar el mejor activo
+    top_ticker = max(signals, key=signals.get)
+    
+    # 2. Decidir acción
+    timestamp = datetime.now().strftime('%H:%M:%S')
+    current_pos = st.session_state.positions.get(top_ticker)
+    
+    # Si tenemos otro activo, lo vendemos
+    for pos_ticker in list(st.session_state.positions.keys()):
+        if pos_ticker != top_ticker:
+            qty = st.session_state.positions[pos_ticker]['qty']
+            sell_price = prices.get(pos_ticker, st.session_state.positions[pos_ticker]['buy_price'])
+            st.session_state.cash += (qty * sell_price)
+            st.session_state.orders.insert(0, {"Hora": timestamp, "Activo": pos_ticker, "Acción": "SELL", "Precio": sell_price})
+            st.session_state.bot_logs.insert(0, f"[{timestamp}] 🔄 Vendiendo {pos_ticker} para rotar a {top_ticker}.")
+            del st.session_state.positions[pos_ticker]
+            current_pos = None
+
+    # Si no tenemos posición, compramos el mejor
+    if not current_pos and st.session_state.cash > 10:
+        buy_price = prices.get(top_ticker, 0)
+        if buy_price > 0:
+            qty = (st.session_state.cash * 0.95) / buy_price
+            cost = qty * buy_price
+            st.session_state.cash -= cost
+            st.session_state.positions[top_ticker] = {"qty": qty, "buy_price": buy_price}
+            st.session_state.orders.insert(0, {"Hora": timestamp, "Activo": top_ticker, "Acción": "BUY", "Precio": buy_price})
+            st.session_state.bot_logs.insert(0, f"[{timestamp}] 🚀 Comprando {top_ticker} con datos reales.")
+
+st.session_state.bot_logs = st.session_state.bot_logs[:10]
+
+# --- CÁLCULO DE PNL Y EQUITY ---
+total_positions_val = 0.0
+pnl_unrealized = 0.0
+
+for ticker, pos in st.session_state.positions.items():
+    curr_price = prices.get(ticker, pos['buy_price'])
+    total_positions_val += (pos['qty'] * curr_price)
+    pnl_unrealized += (pos['qty'] * (curr_price - pos['buy_price']))
+
+equity = st.session_state.cash + total_positions_val
+total_return = equity - st.session_state.initial_capital
+
+if len(st.session_state.equity_history) == 0 or st.session_state.equity_history[-1]['equity'] != equity:
+    st.session_state.equity_history.append({'time': datetime.now(), 'equity': equity})
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -61,74 +115,49 @@ with st.sidebar:
     st.divider()
     vista = st.radio("MÓDULOS", ["📈 Terminal de Trading", "🌡️ Análisis de Mercado"])
     st.divider()
-    st.markdown(f"🔄 **Última actualización:** {datetime.now().strftime('%H:%M:%S')}")
-    if st.button("Forzar Refresco"):
+    if st.button("Reiniciar Cuenta"):
+        st.session_state.cash = 50000.0
+        st.session_state.positions = {}
+        st.session_state.orders = []
+        st.session_state.equity_history = []
+        st.session_state.bot_logs = ["Cuenta reiniciada."]
         st.rerun()
-
-# --- ESTADO LOCAL PARA SIMULACIÓN ---
-# Como en Streamlit Cloud no hay bot local corriendo, inicializamos estado en session
-if 'cash' not in st.session_state:
-    st.session_state.cash = 50000.0
-    st.session_state.positions = {}
-    st.session_state.orders = []
-    st.session_state.equity_history = []
 
 # --- VISTA 1: TERMINAL ---
 if vista == "📈 Terminal de Trading":
     st.title("Terminal de Trading (Paper)")
     
-    # 1. Obtener datos
-    df_btc, data_status = fetch_real_ohlcv("BTC/USDT")
-    
-    cash = st.session_state.cash
-    pos = st.session_state.positions
-    orders = st.session_state.orders
-    
-    # Simular fluctuación de precios en tiempo real basándonos en el precio real
-    live_price = df_btc['close'].iloc[-1] if not df_btc.empty and df_btc['close'].iloc[-1] > 0 else 65000.0
-    
-    # Calcular PnL de posiciones abiertas
-    total_positions_val = 0.0
-    pnl_unrealized = 0.0
-    for ticker, p in pos.items():
-        curr_val = p['qty'] * live_price if "BTC" in ticker else p['qty'] * p['buy_price']
-        total_positions_val += curr_val
-        pnl_unrealized += (curr_val - (p['qty'] * p['buy_price']))
-        
-    equity = cash + total_positions_val
-    total_return = equity - 50000.0
-    
-    if len(st.session_state.equity_history) == 0 or st.session_state.equity_history[-1]['equity'] != equity:
-        st.session_state.equity_history.append({'time': datetime.now(), 'equity': equity})
-        
-    # 2. Layout: Gráfico izquierda, Resumen derecha
     col_chart, col_info = st.columns([2.8, 1])
     
     with col_chart:
-        st.markdown(f"### BTC/USDT - Velas Japonesas <span style='font-size:12px; color:#10B981;'>{data_status}</span>", unsafe_allow_html=True)
+        status_color = "#10B981" if data_status == "LIVE DATA" else "#EF4444"
+        st.markdown(f"### BTC/USDT - Velas Japonesas <span style='font-size:12px; color:{status_color};'>{data_status}</span>", unsafe_allow_html=True)
         
-        if data_status == "LIVE DATA":
-            df_btc['SMA_20'] = df_btc['close'].rolling(window=20).mean()
-            df_btc['RSI_14'] = calculate_rsi(df_btc['close']) # Nota: RSI calcula un solo valor, graficaremos a mano
+        # Generar gráfico usando precios reales
+        try:
+            ohlcv = exchange.fetch_ohlcv("BTC/USDT", timeframe='1h', limit=100)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df['SMA_20'] = df['close'].rolling(window=20).mean()
             
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
-            fig.add_trace(go.Candlestick(x=df_btc['timestamp'], open=df_btc['open'], high=df_btc['high'], low=df_btc['low'], close=df_btc['close'], increasing_line_color='#10B981', decreasing_line_color='#EF4444'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df_btc['timestamp'], y=df_btc['SMA_20'], mode='lines', line=dict(color='#F59E0B', width=2), name="SMA 20"), row=1, col=1)
+            fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], increasing_line_color='#10B981', decreasing_line_color='#EF4444'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df['timestamp'], y=df['SMA_20'], mode='lines', line=dict(color='#F59E0B', width=2), name="SMA 20"), row=1, col=1)
             
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FFFFFF'), showlegend=False, height=500, margin=dict(l=0, r=0, t=10, b=0))
             fig.update_xaxes(gridcolor='rgba(255,255,255,0.1)', rangeslider=dict(visible=False))
             fig.update_yaxes(gridcolor='rgba(255,255,255,0.1)')
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.error("No se pudieron cargar las velas reales. Revisa tu conexión a MEXC.")
+        except:
+            st.error("No se pudieron cargar las velas reales.")
             
     with col_info:
         st.markdown("### RESUMEN")
         st.metric("EQUITY TOTAL", f"${equity:,.2f}", f"{total_return:+,.2f}")
-        st.metric("EFECTIVO LIBRE", f"${cash:,.2f}", "Disponible")
+        st.metric("EFECTIVO", f"${st.session_state.cash:,.2f}", "Disponible")
         st.metric("P&L NO REALIZADO", f"${pnl_unrealized:,.2f}", "En el mercado")
         
-        st.markdown("### MÉTRICAS DE RIESGO")
+        st.markdown("### RIESGO")
         if len(st.session_state.equity_history) > 10:
             df_eq = pd.DataFrame(st.session_state.equity_history)
             returns = df_eq['equity'].pct_change().dropna()
@@ -137,25 +166,13 @@ if vista == "📈 Terminal de Trading":
                 roll_max = df_eq['equity'].cummax()
                 drawdown = (df_eq['equity'] - roll_max) / roll_max
                 max_dd = drawdown.min() * 100
-                var_95 = abs(np.percentile(returns, 5) * equity)
+                st.metric("SHARPE RATIO", f"{sharpe:.2f}", "Riesgo/Retorno")
+                st.metric("MAX DRAWDOWN", f"{max_dd:.2f}%", "Peor caída")
             else:
-                sharpe, max_dd, var_95 = 0.0, 0.0, 0.0
+                st.metric("SHARPE RATIO", "N/A", "Pocos datos")
         else:
-            sharpe, max_dd, var_95 = "N/A", "N/A", "N/A" # Datos insuficientes
-            
-        st.metric("SHARPE RATIO", f"{sharpe:.2f}" if isinstance(sharpe, float) else sharpe, "Riesgo/Retorno")
-        st.metric("MAX DRAWDOWN", f"{max_dd:.2f}%" if isinstance(max_dd, float) else max_dd, "Peor caída")
-        st.metric("VaR (95%)", f"${var_95:,.2f}" if isinstance(var_95, float) else var_95, "Riesgo")
-        
-        # Win Rate Real
-        closed_trades = [o for o in orders if "SELL" in o["side"]]
-        if len(closed_trades) > 0:
-            # Lógica simple: si vendimos a un precio mayor al de compra, ganamos
-            winning = sum(1 for o in closed_trades if o["price"] > 60000) # Simplificación
-            win_rate = (winning / len(closed_trades)) * 100
-        else:
-            win_rate = "N/A"
-        st.metric("WIN RATE", f"{win_rate:.1f}%" if isinstance(win_rate, float) else win_rate, "Histórico")
+            st.metric("SHARPE RATIO", "N/A", "Recopilando datos")
+            st.metric("MAX DRAWDOWN", "N/A", "Recopilando datos")
 
     st.divider()
     
@@ -168,31 +185,42 @@ if vista == "📈 Terminal de Trading":
             fig_eq.add_trace(go.Scatter(x=df_eq['time'], y=df_eq['equity'], mode='lines', fill='tozeroy', line=dict(color='#3B82F6', width=2)))
             fig_eq.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#FFFFFF'), height=200, margin=dict(l=0, r=0, t=10, b=0))
             st.plotly_chart(fig_eq, use_container_width=True)
-        else:
-            st.info("Recopilando historial...")
             
     with col_orders:
-        st.markdown("### HISTORIAL (Simulado)")
-        if not orders:
-            st.info("No hay órdenes.")
-        else:
-            st.dataframe(pd.DataFrame(orders[-5:]), use_container_width=True, hide_index=True)
+        st.markdown("### LIVE BOT FEED (Nube)")
+        logs_html = "<div style='background: #000; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; height: 180px; overflow-y: auto;'>"
+        for log in st.session_state.bot_logs:
+            color = "#10B981" if "Comprando" in log else "#EF4444" if "Vendiendo" in log else "#94A3B8"
+            logs_html += f"<div style='color: {color}; margin-bottom: 4px;'>{log}</div>"
+        logs_html += "</div>"
+        st.markdown(logs_html, unsafe_allow_html=True)
 
-# --- VISTA 2: ANÁLISIS DE MERCADO ---
+    st.divider()
+    st.markdown("### HISTORIAL DE ÓRDENES")
+    if st.session_state.orders:
+        st.dataframe(pd.DataFrame(st.session_state.orders), use_container_width=True, hide_index=True)
+    else:
+        st.info("Esperando la primera operación del bot...")
+
+# --- VISTA 2: MERCADO ---
 elif vista == "🌡️ Análisis de Mercado":
     st.title("Análisis de Mercado")
-    
-    df_ticks, status = fetch_tickers_24h()
-    
-    if status == "LIVE DATA" and not df_ticks.empty:
-        st.subheader("Mapa de Calor (24h)")
+    try:
+        symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT", "DOT/USDT", "LINK/USDT"]
+        tickers = exchange.fetch_tickers(symbols)
+        data = []
+        for s in symbols:
+            if s in tickers:
+                data.append({"Activo": s.split('/')[0], "Cambio 24h (%)": tickers[s]['percentage']})
+        
+        df_market = pd.DataFrame(data)
         fig_heat = go.Figure(go.Treemap(
-            labels=df_ticks['symbol'], parents=[""] * len(df_ticks), values=[1] * len(df_ticks),
-            text=[f"{c:+.2f}%" if pd.notna(c) else "N/A" for c in df_ticks['change']],
+            labels=df_market['Activo'], parents=[""] * len(df_market), values=[1] * len(df_market),
+            text=[f"{c:+.2f}%" if pd.notna(c) else "N/A" for c in df_market['Cambio 24h (%)']],
             textinfo="label+text",
-            marker=dict(colors=df_ticks['change'], colorscale="RdYlGn", cmid=0, line=dict(width=2, color="#0F1115"))
+            marker=dict(colors=df_market['Cambio 24h (%)'], colorscale="RdYlGn", cmid=0, line=dict(width=2, color="#0F1115"))
         ))
-        fig_heat.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), height=400)
+        fig_heat.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), height=500)
         st.plotly_chart(fig_heat, use_container_width=True)
-    else:
-        st.error("No se pudieron cargar los datos de mercado en vivo desde MEXC.")
+    except:
+        st.error("Error cargando datos de mercado desde MEXC.")
