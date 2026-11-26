@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Añadir la carpeta 'src' al PATH de Python para que encuentre el módulo 'nexora'
+_src_dir = str(Path(__file__).resolve().parents[2])
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 import streamlit as st
 import pandas as pd
 import numpy as np
