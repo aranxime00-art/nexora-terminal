@@ -34,3 +34,9 @@ Thumbs.db
 data/*.db
 
 src/*.egg-info/
+
+*.zip
+
+*_BACKUP.py
+
+.env

@@ -3,7 +3,7 @@ import time
 import pandas as pd
 from sqlalchemy.orm import Session
 from nexora.data.database import get_engine, init_db, Account, Position, TradeOrder, MarketPrice
-from nexora.execution.engine import PaperTradingEngine
+from nexora.execution.mexc_live import MEXCAPIPaperExecutor
 from nexora.factors.indicators import calculate_momentum, calculate_rsi
 from nexora.utils import setup_logger
 
@@ -12,18 +12,29 @@ class LiveSimulator:
         self.logger = setup_logger(name="live_sim")
         self.engine = get_engine()
         init_db(self.engine)
-        self.trader = PaperTradingEngine(self.engine, commission_rate=0.001, slippage_rate=0.001)
-        self.exchange = ccxt.mexc()
         
-        # Los 30 activos a monitorear
-        self.tickers = [
-            "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
-            "DOGE/USDT", "DOT/USDT", "LINK/USDT", "TON/USDT", "POL/USDT",
-            "AVAX/USDT", "SUI/USDT", "LTC/USDT", "BCH/USDT", "ATOM/USDT",
-            "NEAR/USDT", "APT/USDT", "ARB/USDT", "OP/USDT", "INJ/USDT",
-            "SEI/USDT", "TIA/USDT", "PEPE/USDT", "SHIB/USDT", "TRX/USDT",
-            "ETC/USDT", "FIL/USDT", "HBAR/USDT", "ICP/USDT", "ALGO/USDT"
-        ]
+        # Motor de Paper Trading conectado a la API real para leer saldos
+        self.trader = MEXCAPIPaperExecutor()
+        
+        self.exchange = ccxt.mexc()
+        # Lista de activos a analizar
+        self.tickers = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT"]
+        
+        self.sync_balance_with_mexc()
+
+    def sync_balance_with_mexc(self):
+        real_cash = self.trader.get_balance('USDT')
+        with Session(self.engine) as session:
+            acc = session.query(Account).first()
+            if not acc:
+                # Si no hay cuenta, le inyectamos 50k virtuales si el saldo real es 0
+                cap = real_cash if real_cash > 0 else 50000.0
+                acc = Account(cash=cap, initial_capital=cap)
+                session.add(acc)
+            else:
+                acc.cash = real_cash if real_cash > 0 else acc.cash
+            session.commit()
+        self.logger.info(f"🔄 Saldo sincronizado. Capital para Paper Trading: ${acc.cash:.2f} USDT")
 
     def update_market_prices(self, prices: dict):
         with Session(self.engine) as session:
@@ -40,74 +51,62 @@ class LiveSimulator:
         signals = {}
         for symbol in self.tickers:
             try:
+                # Datos reales desde MEXC
                 ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe='1h', limit=50)
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 prices[symbol] = df['close'].iloc[-1]
                 
-                # Estrategia: Momentum a 1 mes menos penalización por RSI alto
+                # USO DE INDICADORES REALES (Sin aleatoriedad)
                 mom = calculate_momentum(df['close'])['mom_1m']
                 rsi = calculate_rsi(df['close'])
-                signals[symbol] = mom - (rsi / 1000) 
-            except Exception:
-                pass
+                
+                # Estrategia: Momentum positivo y RSI no sobrecomprado
+                if pd.isna(mom) or pd.isna(rsi):
+                    signals[symbol] = -999
+                else:
+                    signals[symbol] = mom - (rsi / 1000) 
+            except Exception as e:
+                self.logger.error(f"Error obteniendo datos reales de {symbol}: {e}")
         return prices, signals
 
     def execute_cycle(self) -> None:
-        print("\n==================================================")
-        print("🔍 ESCANEANDO 30 ACTIVOS EN BUSCA DE OPORTUNIDADES...")
-        print("==================================================")
+        self.logger.info("--- ESCANEANDO MERCADO (DATOS REALES MEXC) ---")
         
         prices, signals = self.get_market_data()
         if not prices:
-            print("❌ Error de conexión. Reintentando...")
+            self.logger.warning("Sin datos de mercado. Reintentando...")
             return
             
         self.update_market_prices(prices)
         
-        # Encontrar el mejor activo
+        # Selección determinista basada en el cálculo del indicador
         top_ticker = max(signals, key=signals.get)
-        top_score = signals[top_ticker]
-        
-        print(f"💡 El mejor activo detectado es: {top_ticker} (Score: {top_score:.4f})")
+        self.logger.info(f"🏆 Mejor activo por indicadores: {top_ticker} (Score: {signals[top_ticker]:.4f})")
 
         with Session(self.engine) as session:
+            pos = session.query(Position).first()
             acc = session.query(Account).first()
-            pos = session.query(Position).first() # Revisar si ya tenemos una posición abierta
-
-            if not acc:
-                session.add(Account(cash=50000.0, initial_capital=50000.0))
-                session.commit()
-                
-            # LÓGICA DE VENTA: Si tenemos una posición pero ya no es el mejor activo, la vendemos
+            
             if pos and pos.ticker != top_ticker:
-                print(f"🔄 Cambio de oportunidad: Vendiendo {pos.ticker} para comprar {top_ticker}...")
-                target_weights = {pos.ticker: 0.0, top_ticker: 0.95}
-                self.trader.execute_rebalance(target_weights, prices)
-                print(f"✅ Venta de {pos.ticker} ejecutada.")
+                self.logger.info(f"🔄 Rotando: Vendiendo {pos.ticker}...")
+                self.trader.sell(pos.ticker, pos.quantity)
+                self.trader.buy(top_ticker, acc.cash * 0.95)
             
-            # LÓGICA DE COMPRA: Si no tenemos nada o acabamos de vender, compramos el nuevo mejor
             elif not pos:
-                print(f"🚀 Oportunidad de compra: Adquiriendo {top_ticker}...")
-                target_weights = {top_ticker: 0.95}
-                self.trader.execute_rebalance(target_weights, prices)
-                print(f"✅ Compra de {top_ticker} ejecutada.")
-            
+                if acc.cash > 10:
+                    self.logger.info(f"🛒 Oportunidad detectada. Comprando {top_ticker}...")
+                    self.trader.buy(top_ticker, acc.cash * 0.95)
             else:
-                print(f"⏳ Manteniendo posición actual en {top_ticker}. Esperando mejor oportunidad...")
+                self.logger.info(f"⏳ Manteniendo {top_ticker}. Esperando mejor oportunidad.")
 
-        print(f"💤 Esperando 10 segundos para el próximo escaneo...")
-
-    def run_forever(self, interval_seconds: int = 10) -> None:
-        print("==================================================")
-        print("🟢 NEXORA AUTONOMOUS BOT (24/7) INICIADO 🟢")
-        print("==================================================")
+    def run_forever(self, interval_seconds: int = 60) -> None:
+        self.logger.info("🟢 NEXORA BOT INICIADO 🟢")
         while True:
             try:
                 self.execute_cycle()
                 time.sleep(interval_seconds)
             except KeyboardInterrupt:
-                print("\n🛑 Bot detenido.")
                 break
             except Exception as e:
-                print(f"\n❌ Error: {e}")
+                self.logger.error(f"Error: {e}")
                 time.sleep(interval_seconds)
